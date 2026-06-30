@@ -1,0 +1,533 @@
+{
+  "info": {
+    "name": "Workout AI Backend",
+    "description": "Full test suite for the Workout AI PHP backend. Set {{baseUrl}} to your local path, e.g. http://localhost/workout_ai/backend/api",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost/backend/api",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "routineExerciseId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🟢 Health",
+      "item": [
+        {
+          "name": "Ping",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/ping.php",
+            "description": "Check if the backend server is alive."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Status is ok', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.status).to.eql('ok');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DB Test",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/db_test.php",
+            "description": "Verify database connection and return user count."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('DB is ok', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.db).to.eql('ok');",
+                  "  pm.expect(json).to.have.property('user_count');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🔐 Auth",
+      "item": [
+        {
+          "name": "Signup",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/signup.php",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test User\",\n  \"email\": \"testuser@example.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "description": "Register a new user. Re-running returns 409 if email already exists."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const code = pm.response.code;",
+                  "pm.test('201 or 409', () => pm.expect([200, 201, 409]).to.include(code));",
+                  "if (code === 200 || code === 201) {",
+                  "  pm.test('Has user_id', () => {",
+                  "    pm.expect(pm.response.json()).to.have.property('user_id');",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Signup — Invalid (short password)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/signup.php",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bad User\",\n  \"email\": \"bad@example.com\",\n  \"password\": \"123\"\n}"
+            },
+            "description": "Should return 400 — password too short."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Has error field', () => {",
+                  "  pm.expect(pm.response.json()).to.have.property('error');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login ✅ (saves token)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login.php",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"testuser@example.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "description": "Login with valid credentials. Token is auto-saved to {{token}} for all subsequent requests."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has token', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('token');",
+                  "  pm.collectionVariables.set('token', json.token);",
+                  "  console.log('Token saved:', json.token);",
+                  "});",
+                  "pm.test('Has user object', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.user).to.have.property('id');",
+                  "  pm.expect(json.user).to.have.property('name');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login ❌ (wrong password)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login.php",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"testuser@example.com\",\n  \"password\": \"wrongpassword\"\n}"
+            },
+            "description": "Should return 401 — invalid credentials."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Has error field', () => {",
+                  "  pm.expect(pm.response.json()).to.have.property('error');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login ❌ (no token in header)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/profile/get.php",
+            "description": "No Authorization header — should return 401."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Has message field', () => {",
+                  "  pm.expect(pm.response.json()).to.have.property('message');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "👤 Profile",
+      "item": [
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/profile/get.php",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "description": "Returns the current user's profile. Empty object if not set yet."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Valid JSON response', () => {",
+                  "  pm.response.json();",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Save Profile ✅",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/profile/save.php",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"height_cm\": 175,\n  \"weight_kg\": 75,\n  \"experience\": \"beginner\",\n  \"split_type\": \"single\",\n  \"goal\": \"build_muscle\"\n}"
+            },
+            "description": "Create or update the user's profile. Run this before generate."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Success true', () => {",
+                  "  pm.expect(pm.response.json().success).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Save Profile ❌ (missing field)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/profile/save.php",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"height_cm\": 175,\n  \"weight_kg\": 75\n}"
+            },
+            "description": "Missing experience/split_type/goal — should return 400."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Has error field', () => {",
+                  "  pm.expect(pm.response.json()).to.have.property('error');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🏋️ Routine",
+      "item": [
+        {
+          "name": "Generate Routine",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/routine/generate.php",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "description": "Generate a new weekly routine based on the user's profile. Run Save Profile first."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has routine_id', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('routine_id');",
+                  "  pm.expect(json.success).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Current Routine",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/routine/current.php",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "description": "Returns the latest routine with all days and exercises."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has days array', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('days');",
+                  "  pm.expect(json.days).to.be.an('array');",
+                  "});",
+                  "pm.test('Has status field', () => {",
+                  "  pm.expect(pm.response.json()).to.have.property('status');",
+                  "});",
+                  "// Auto-grab first exercise id for toggle test",
+                  "const json = pm.response.json();",
+                  "if (json.days && json.days.length > 0) {",
+                  "  const day = json.days.find(d => d.exercises && d.exercises.length > 0);",
+                  "  if (day) {",
+                  "    pm.collectionVariables.set('routineExerciseId', day.exercises[0].id);",
+                  "    console.log('Exercise ID saved:', day.exercises[0].id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Toggle Exercise ✅ (mark done)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/routine/toggle.php",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"routine_exercise_id\": {{routineExerciseId}},\n  \"done\": true\n}"
+            },
+            "description": "Mark an exercise as completed. Exercise ID is auto-filled from Get Current Routine."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Success true', () => {",
+                  "  pm.expect(pm.response.json().success).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Toggle Exercise (mark undone)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/routine/toggle.php",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"routine_exercise_id\": {{routineExerciseId}},\n  \"done\": false\n}"
+            },
+            "description": "Unmark an exercise as completed."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Success true', () => {",
+                  "  pm.expect(pm.response.json().success).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Toggle Exercise ❌ (missing fields)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/routine/toggle.php",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "description": "Empty body — should return 400."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Has error field', () => {",
+                  "  pm.expect(pm.response.json()).to.have.property('error');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Continue Routine (next week)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/routine/continue.php?action=continue",
+              "query": [{ "key": "action", "value": "continue" }]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "description": "Reset checkboxes and increment week_number. Keeps same exercises."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Mode is continued', () => {",
+                  "  pm.expect(pm.response.json().mode).to.eql('continued');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Continue Routine (generate new)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/routine/continue.php?action=new",
+              "query": [{ "key": "action", "value": "new" }]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "description": "Generate a brand new routine variation."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has routine_id', () => {",
+                  "  pm.expect(pm.response.json()).to.have.property('routine_id');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "📊 Progress",
+      "item": [
+        {
+          "name": "Get Summary",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/progress/summary.php",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "description": "Returns last 30 days of progress log. Also snapshots today's completion state."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has log array', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('log');",
+                  "  pm.expect(json.log).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
