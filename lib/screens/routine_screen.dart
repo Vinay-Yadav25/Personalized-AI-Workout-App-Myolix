@@ -165,8 +165,29 @@ class _PlanHeader extends StatelessWidget {
   final RoutineProvider rp;
   const _PlanHeader({required this.auth, required this.rp});
 
+  // Mirrors the backend's 4-week mesocycle so the user can see
+  // which training phase they're currently in.
+  static const _phaseNames = {
+    1: 'Hypertrophy',
+    2: 'Volume',
+    3: 'Intensity',
+    4: 'Deload',
+  };
+  static const _phaseColors = {
+    1: Color(0xFF6C5CE7),
+    2: Color(0xFF00CEC9),
+    3: Color(0xFFFF6B6B),
+    4: Color(0xFFFDCB6E),
+  };
+
   @override
   Widget build(BuildContext context) {
+    final weekNum = (rp.routine?['week_number'] as num?)?.toInt() ?? 1;
+    var phase = weekNum % 4;
+    if (phase == 0) phase = 4;
+    final phaseName  = _phaseNames[phase]!;
+    final phaseColor = _phaseColors[phase]!;
+
     return Container(
       color: const Color(0xFF0F0F1E),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -182,7 +203,7 @@ class _PlanHeader extends StatelessWidget {
             Row(children: [
               _dot(const Color(0xFFFF6B6B)),
               const SizedBox(width: 6),
-              Text('Week ${rp.routine?['week_number'] ?? 1}',
+              Text('Week $weekNum',
                   style: const TextStyle(color: Colors.white60, fontSize: 12)),
               const SizedBox(width: 8),
               _dot(Colors.white38),
@@ -195,6 +216,23 @@ class _PlanHeader extends StatelessWidget {
               const Text('7 Days',
                   style: TextStyle(color: Colors.white60, fontSize: 12)),
             ]),
+            const SizedBox(height: 6),
+            // Periodization phase badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: phaseColor.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: phaseColor.withOpacity(0.4)),
+              ),
+              child: Text(
+                '$phaseName Phase',
+                style: TextStyle(
+                    color: phaseColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold),
+              ),
+            ),
           ]),
         ),
         IconButton(
@@ -570,22 +608,44 @@ class _ExerciseCard extends StatelessWidget {
     'Cardio':Icons.directions_run,  'FullBody':  Icons.sports_gymnastics,
   };
 
+  // Parses "12,10,8,6" → "12 Reps • 10 Reps • 8 Reps • 6 Reps"
+  // Parses "30s,30s,30s" → "30s • 30s • 30s" (no "Reps" suffix for time)
+  // Falls back to repeating a single legacy value across `sets` count.
+  static String _buildRepLabel(String rawReps, int sets) {
+    final parts = rawReps
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+
+    final display = parts.length > 1
+        ? parts
+        : List.generate(sets, (_) => parts.isNotEmpty ? parts.first : rawReps);
+
+    return display.map((p) {
+      final isSeconds = p.toLowerCase().endsWith('s') &&
+          !p.toLowerCase().contains('min');
+      return isSeconds ? p : '$p Reps';
+    }).join(' • ');
+  }
+
   @override
   Widget build(BuildContext context) {
     final muscle    = ex['muscle_group'] as String? ?? 'Chest';
     final color     = _colors[muscle] ?? const Color(0xFF6C5CE7);
     final icon      = _icons[muscle]  ?? Icons.fitness_center;
     final sets      = (ex['sets'] as num?)?.toInt() ?? 3;
-    final reps      = ex['reps'] as String? ?? '10';
+    final rawReps   = (ex['reps'] as String? ?? '10').trim();
     final isDone    = ex['is_completed'] == 1;
     final exId      = (ex['id'] as num).toInt();
     final equipment = ex['equipment'] as String? ?? '';
-    // FIX: recovery exercises store duration-style reps like "15-20 min"
-    //      instead of rep counts — show that directly instead of
-    //      generating "15-20 min Reps • 15-20 min Reps • ..."
-    final repLabel  = isRecovery
-        ? reps
-        : List.generate(sets, (_) => '$reps Reps').join(' • ');
+
+    // FIX: backend now stores a per-set scheme like "12,10,8,6" (pyramid)
+    //      or "30s,30s,30s" (time-based) instead of one number repeated.
+    //      Parse it into individual chips; fall back to the old
+    //      "repeat single value" behavior for any legacy routines
+    //      generated before this change.
+    final repLabel = isRecovery ? rawReps : _buildRepLabel(rawReps, sets);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),

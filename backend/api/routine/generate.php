@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../helpers/jwt.php';
+require_once __DIR__ . '/../helpers/workout_scheme.php';
 
 if (!isset($uid)) {
     $uid = require_auth();
@@ -42,28 +43,17 @@ $splitConfig = [
     ],
 ];
 
-$workoutDays = $splitConfig[$goal][$split]
-    ?? $splitConfig['build_muscle']['single'];
+$workoutDays = $splitConfig[$goal][$split] ?? $splitConfig['build_muscle']['single'];
 
-// ── 2. Insert "Active Recovery" on the Sunday slot ───────────────────────────
-// FIX: previously inserted a focus literally called 'Rest' with ZERO exercises.
-//      Now Sunday becomes a light-cardio recovery day (walking/jogging/stretch
-//      style movements), so the user always has something gentle to do —
-//      but it's clearly distinguished from a hard training day.
-$isoWeekday = (int)date('N');          // 1=Mon … 7=Sun
-$sundaySlot = 8 - $isoWeekday;          // Mon→7, Tue→6, … Sun→1
+// Insert Active Recovery on the Sunday slot
+$isoWeekday = (int)date('N');
+$sundaySlot = 8 - $isoWeekday;
 array_splice($workoutDays, $sundaySlot - 1, 0, ['Active Recovery']);
 $splits = $workoutDays;
 
-// ── 3. Goal → Sets / Reps / Exercise count ───────────────────────────────────
-$goalConfig = [
-    'build_muscle' => ['sets' => 4, 'reps' => '8',  'limit' => 5],
-    'lose_fat'     => ['sets' => 3, 'reps' => '15', 'limit' => 6],
-    'maintain'     => ['sets' => 3, 'reps' => '12', 'limit' => 5],
-];
-$gc = $goalConfig[$goal] ?? $goalConfig['build_muscle'];
+$gc = goalBaseConfig($goal);
 
-// ── 4. Location → Equipment filter + preference ordering ─────────────────────
+// ── 2. Location → Equipment filter + preference ordering ─────────────────────
 $equipmentFilter = '';
 $equipmentOrder  = '';
 
@@ -110,29 +100,31 @@ if ($goal === 'lose_fat') {
     $goalOrder = "CASE e.muscle_group WHEN 'Cardio' THEN 1 ELSE 2 END ASC,";
 }
 
-// ── 5. Create Routine Record ──────────────────────────────────────────────────
-// FIX: start_date is ALWAYS this Monday (regardless of which day "Generate"
-//      is pressed on), guaranteeing day 1 = Mon … day 7 = Sun across the
-//      whole app. This keeps Flutter's date labels and the recovery day
-//      perfectly aligned with the real calendar.
+// Compound lifts sequenced FIRST — matches real program design
+// (heavy compound work while fresh, isolation moves after)
+$typeOrder = "CASE e.exercise_type WHEN 'compound' THEN 1 ELSE 2 END ASC,";
+
+// ── 3. Create Routine Record ──────────────────────────────────────────────────
 $cnt = $pdo->prepare("SELECT COUNT(*) FROM routines WHERE user_id = ?");
 $cnt->execute([$uid]);
-$seed = (int)$cnt->fetchColumn();
+$seed       = (int)$cnt->fetchColumn();
+$weekNumber = $seed + 1;
+$phase      = weekPhase($weekNumber);
 
 $pdo->prepare("
     INSERT INTO routines (user_id, week_number, variation_seed, start_date)
     VALUES (?, ?, ?, DATE_SUB(CURDATE(), INTERVAL (DAYOFWEEK(CURDATE()) + 5) % 7 DAY))
-")->execute([$uid, $seed + 1, $seed]);
+")->execute([$uid, $weekNumber, $seed]);
 $routineId = $pdo->lastInsertId();
 
-// ── 6. Build Each Day ─────────────────────────────────────────────────────────
+// ── 4. Build Each Day ─────────────────────────────────────────────────────────
 foreach ($splits as $i => $focus) {
     $pdo->prepare("
         INSERT INTO routine_days (routine_id, day_of_week, focus) VALUES (?, ?, ?)
     ")->execute([$routineId, $i + 1, $focus]);
     $dayId = $pdo->lastInsertId();
 
-    // ── Active Recovery (Sunday) — light cardio, fixed light volume ──────────
+    // ── Active Recovery (Sunday) ──────────────────────────────────────────
     if ($focus === 'Active Recovery') {
         $rq = $pdo->prepare("
             SELECT * FROM exercises
@@ -150,55 +142,30 @@ foreach ($splits as $i => $focus) {
         continue;
     }
 
-    $groups       = explode('+', str_replace(' ', '', $focus));
-    $placeholders = implode(',', array_fill(0, count($groups), '?'));
-    $limit        = $gc['limit'];
+    $groups    = explode('+', str_replace(' ', '', $focus));
+    // FIX: exercise count is now based on how many muscle groups this
+    //      day targets (1 → 6 exercises, 2 → 8 exercises balanced
+    //      across both), not on the fitness goal.
+    $numGroups = count($groups);
+    $limit     = exerciseCountForGroups($numGroups);
 
-    $sql = "
-        SELECT * FROM exercises e
-        WHERE  e.muscle_group IN ($placeholders)
-          AND  e.difficulty    = ?
-               $equipmentFilter
-        ORDER BY
-               $goalOrder
-               $equipmentOrder
-               (e.id + ?) % 7,
-               RAND()
-        LIMIT  $limit
-    ";
-    $q = $pdo->prepare($sql);
-    $q->execute(array_merge($groups, [$exp, $seed]));
-    $exRows = $q->fetchAll(PDO::FETCH_ASSOC);
-
-    if (count($exRows) < 3 && $equipmentFilter !== '') {
-        $q2 = $pdo->prepare("
-            SELECT * FROM exercises e
-            WHERE  e.muscle_group IN ($placeholders)
-              AND  e.difficulty    = ?
-            ORDER BY $goalOrder $equipmentOrder (e.id + ?) % 7, RAND()
-            LIMIT  $limit
-        ");
-        $q2->execute(array_merge($groups, [$exp, $seed]));
-        $exRows = $q2->fetchAll(PDO::FETCH_ASSOC);
-    }
-
-    if (count($exRows) < 3) {
-        $q3 = $pdo->prepare("
-            SELECT * FROM exercises e
-            WHERE  e.muscle_group IN ($placeholders)
-               $equipmentFilter
-            ORDER BY $goalOrder $equipmentOrder RAND()
-            LIMIT  $limit
-        ");
-        $q3->execute($groups);
-        $exRows = $q3->fetchAll(PDO::FETCH_ASSOC);
-    }
+    $exRows = fetchBalancedExercises(
+        $pdo, $groups, $exp, $equipmentFilter, $equipmentOrder,
+        $goalOrder, $typeOrder, $seed, $limit
+    );
 
     foreach ($exRows as $ex) {
+        $isCompound = ($ex['exercise_type'] ?? 'isolation') === 'compound';
+        $timeBased  = isTimeBased($ex);
+
+        [$sets, $repsStr] = buildScheme(
+            $isCompound, $timeBased, $gc['sets'], $gc['reps'], $phase
+        );
+
         $pdo->prepare("
             INSERT INTO routine_exercises (routine_day_id, exercise_id, sets, reps)
             VALUES (?, ?, ?, ?)
-        ")->execute([$dayId, $ex['id'], $gc['sets'], $gc['reps']]);
+        ")->execute([$dayId, $ex['id'], $sets, $repsStr]);
     }
 }
 
