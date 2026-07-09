@@ -45,10 +45,15 @@ $splitConfig = [
 
 $workoutDays = $splitConfig[$goal][$split] ?? $splitConfig['build_muscle']['single'];
 
-// Insert Active Recovery on the Sunday slot
-$isoWeekday = (int)date('N');
-$sundaySlot = 8 - $isoWeekday;
-array_splice($workoutDays, $sundaySlot - 1, 0, ['Active Recovery']);
+// FIX: start_date is ALWAYS forced to this Monday (see the routines
+//      INSERT below), so day 1=Mon … day 7=Sun is guaranteed no matter
+//      which day of the week "Generate" is pressed on.
+//      The old code computed Rest's position from TODAY's weekday
+//      (date('N')) — a leftover from before start_date was locked to
+//      Monday — which shoved Rest into the wrong slot (e.g. Thursday)
+//      whenever Generate wasn't pressed on a Sunday.
+//      Rest must simply always be appended as the 7th day.
+$workoutDays[] = 'Rest';
 $splits = $workoutDays;
 
 $gc = goalBaseConfig($goal);
@@ -124,21 +129,8 @@ foreach ($splits as $i => $focus) {
     ")->execute([$routineId, $i + 1, $focus]);
     $dayId = $pdo->lastInsertId();
 
-    // ── Active Recovery (Sunday) ──────────────────────────────────────────
-    if ($focus === 'Active Recovery') {
-        $rq = $pdo->prepare("
-            SELECT * FROM exercises
-            WHERE muscle_group = 'Cardio' AND difficulty = 'beginner'
-            ORDER BY RAND()
-            LIMIT 3
-        ");
-        $rq->execute();
-        foreach ($rq->fetchAll(PDO::FETCH_ASSOC) as $ex) {
-            $pdo->prepare("
-                INSERT INTO routine_exercises (routine_day_id, exercise_id, sets, reps)
-                VALUES (?, ?, ?, ?)
-            ")->execute([$dayId, $ex['id'], 1, '15-20 min']);
-        }
+    // ── Rest (Sunday) — no exercises ────────────────────────────────────────
+    if ($focus === 'Rest') {
         continue;
     }
 

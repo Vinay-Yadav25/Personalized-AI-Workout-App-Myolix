@@ -49,7 +49,7 @@ class WorkoutApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ProgressProvider()),
       ],
       child: MaterialApp(
-        title: 'AI Workout',
+        title: 'Myolix',
         debugShowCheckedModeBanner: false,
         theme: _buildTheme(),
         initialRoute: '/splash',

@@ -30,7 +30,7 @@ $days = $ds->fetchAll(PDO::FETCH_ASSOC);
 // Fetch exercises for each day
 $exStmt = $pdo->prepare("
     SELECT re.id, re.sets, re.reps, re.is_completed,
-           e.name, e.muscle_group, e.equipment
+           e.name, e.muscle_group, e.equipment, e.gif_url
     FROM routine_exercises re
     JOIN exercises e ON e.id = re.exercise_id
     WHERE re.routine_day_id = ?

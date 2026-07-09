@@ -54,7 +54,7 @@ if ($action === 'continue') {
     $gc      = goalBaseConfig($profile['goal'] ?? 'build_muscle');
 
     $exStmt = $pdo->prepare("
-        SELECT re.id AS routine_exercise_id, re.reps AS current_reps,
+        SELECT re.id AS routine_exercise_id,
                e.name, e.muscle_group, e.exercise_type
         FROM routine_exercises re
         JOIN routine_days rd ON rd.id = re.routine_day_id
@@ -64,10 +64,6 @@ if ($action === 'continue') {
     $exStmt->execute([$routine['id']]);
 
     foreach ($exStmt->fetchAll(PDO::FETCH_ASSOC) as $ex) {
-        // Skip Active Recovery entries — identified by their fixed
-        // "15-20 min" format, which never gets periodized
-        if (stripos($ex['current_reps'] ?? '', 'min') !== false) continue;
-
         $isCompound = ($ex['exercise_type'] ?? 'isolation') === 'compound';
         $timeBased  = isTimeBased($ex);
 

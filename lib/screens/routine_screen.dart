@@ -581,7 +581,7 @@ class _WarmUpCard extends StatelessWidget {
 }
 
 // ─── Exercise card ────────────────────────────────────────────────────────────
-class _ExerciseCard extends StatelessWidget {
+class _ExerciseCard extends StatefulWidget {
   final Map             ex;
   final bool            canToggle;
   final bool            isRecovery;
@@ -592,6 +592,13 @@ class _ExerciseCard extends StatelessWidget {
     required this.rp,
     this.isRecovery = false,
   });
+
+  @override
+  State<_ExerciseCard> createState() => _ExerciseCardState();
+}
+
+class _ExerciseCardState extends State<_ExerciseCard> {
+  bool _expanded = false;
 
   static const _colors = {
     'Chest':     Color(0xFF6C5CE7), 'Back':      Color(0xFF0984E3),
@@ -610,7 +617,6 @@ class _ExerciseCard extends StatelessWidget {
 
   // Parses "12,10,8,6" → "12 Reps • 10 Reps • 8 Reps • 6 Reps"
   // Parses "30s,30s,30s" → "30s • 30s • 30s" (no "Reps" suffix for time)
-  // Falls back to repeating a single legacy value across `sets` count.
   static String _buildRepLabel(String rawReps, int sets) {
     final parts = rawReps
         .split(',')
@@ -631,6 +637,11 @@ class _ExerciseCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ex         = widget.ex;
+    final canToggle   = widget.canToggle;
+    final rp          = widget.rp;
+    final isRecovery  = widget.isRecovery;
+
     final muscle    = ex['muscle_group'] as String? ?? 'Chest';
     final color     = _colors[muscle] ?? const Color(0xFF6C5CE7);
     final icon      = _icons[muscle]  ?? Icons.fitness_center;
@@ -639,12 +650,8 @@ class _ExerciseCard extends StatelessWidget {
     final isDone    = ex['is_completed'] == 1;
     final exId      = (ex['id'] as num).toInt();
     final equipment = ex['equipment'] as String? ?? '';
+    final gifUrl    = ex['gif_url'] as String?;
 
-    // FIX: backend now stores a per-set scheme like "12,10,8,6" (pyramid)
-    //      or "30s,30s,30s" (time-based) instead of one number repeated.
-    //      Parse it into individual chips; fall back to the old
-    //      "repeat single value" behavior for any legacy routines
-    //      generated before this change.
     final repLabel = isRecovery ? rawReps : _buildRepLabel(rawReps, sets);
 
     return Container(
@@ -656,88 +663,170 @@ class _ExerciseCard extends StatelessWidget {
             ? Border.all(color: const Color(0xFF00CEC9), width: 1.5)
             : null,
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: canToggle ? () => rp.toggleExercise(exId, !isDone) : null,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(children: [
-            // Thumbnail
-            Stack(children: [
-              Container(
-                width: 64, height: 64,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(10),
+      child: Column(children: [
+        // ── Main row — tap anywhere to expand/collapse the GIF ─────────────
+        InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(children: [
+              // Thumbnail
+              Stack(children: [
+                Container(
+                  width: 64, height: 64,
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, color: color, size: 30),
                 ),
-                child: Icon(icon, color: color, size: 30),
-              ),
-              if (isDone)
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF00CEC9).withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(10),
+                if (isDone)
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF00CEC9).withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.check, color: Colors.white, size: 28),
                     ),
-                    child: const Icon(Icons.check, color: Colors.white, size: 28),
                   ),
-                ),
-            ]),
-            const SizedBox(width: 14),
-
-            // Name + reps
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(
-                  ex['name'] ?? '',
-                  style: TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w600,
-                    color: isDone ? Colors.white54 : Colors.white,
-                    decoration: isDone
-                        ? TextDecoration.lineThrough : TextDecoration.none,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(repLabel,
-                    style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                if (equipment.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Row(children: [
-                    const Icon(Icons.fitness_center,
-                        size: 10, color: Colors.white38),
-                    const SizedBox(width: 4),
-                    Text(equipment,
-                        style: const TextStyle(
-                            color: Colors.white38, fontSize: 11)),
-                  ]),
-                ],
               ]),
-            ),
+              const SizedBox(width: 14),
 
-            // Three-dot menu
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert, color: Colors.white38),
-              color: const Color(0xFF2A2A3E),
-              onSelected: (v) {
-                if (v == 'toggle' && canToggle) rp.toggleExercise(exId, !isDone);
-              },
-              itemBuilder: (_) => [
-                PopupMenuItem(
-                  value: 'toggle',
-                  child: Row(children: [
-                    Icon(
-                      isDone ? Icons.undo : Icons.check_circle_outline,
-                      size: 18,
-                      color: isDone
-                          ? Colors.redAccent : const Color(0xFF00CEC9),
+              // Name + reps
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(
+                    ex['name'] ?? '',
+                    style: TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w600,
+                      color: isDone ? Colors.white54 : Colors.white,
+                      decoration: isDone
+                          ? TextDecoration.lineThrough : TextDecoration.none,
                     ),
-                    const SizedBox(width: 8),
-                    Text(isDone ? 'Mark undone' : 'Mark done'),
-                  ]),
-                ),
-              ],
-            ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(repLabel,
+                      style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                  if (equipment.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Row(children: [
+                      const Icon(Icons.fitness_center,
+                          size: 10, color: Colors.white38),
+                      const SizedBox(width: 4),
+                      Text(equipment,
+                          style: const TextStyle(
+                              color: Colors.white38, fontSize: 11)),
+                    ]),
+                  ],
+                ]),
+              ),
+
+              // Expand chevron
+              AnimatedRotation(
+                turns: _expanded ? 0.5 : 0,
+                duration: const Duration(milliseconds: 200),
+                child: const Icon(Icons.keyboard_arrow_down,
+                    color: Colors.white38),
+              ),
+              const SizedBox(width: 4),
+
+              // Three-dot menu — dedicated control for marking done/undone
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, color: Colors.white38),
+                color: const Color(0xFF2A2A3E),
+                onSelected: (v) {
+                  if (v == 'toggle' && canToggle) rp.toggleExercise(exId, !isDone);
+                },
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: 'toggle',
+                    enabled: canToggle,
+                    child: Row(children: [
+                      Icon(
+                        isDone ? Icons.undo : Icons.check_circle_outline,
+                        size: 18,
+                        color: isDone
+                            ? Colors.redAccent : const Color(0xFF00CEC9),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(isDone ? 'Mark undone' : 'Mark done'),
+                    ]),
+                  ),
+                ],
+              ),
+            ]),
+          ),
+        ),
+
+        // ── Expandable GIF dropdown ──────────────────────────────────────────
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+          child: _expanded ? _GifPanel(gifUrl: gifUrl) : const SizedBox.shrink(),
+        ),
+      ]),
+    );
+  }
+}
+
+// Displays the exercise GIF, a loading spinner while it loads, and a
+// graceful fallback if no GIF was matched or the network request fails.
+class _GifPanel extends StatelessWidget {
+  final String? gifUrl;
+  const _GifPanel({required this.gifUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      constraints: const BoxConstraints(maxHeight: 220),
+      decoration: BoxDecoration(
+        color: Colors.black26,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: (gifUrl == null || gifUrl!.isEmpty)
+          ? const Padding(
+        padding: EdgeInsets.symmetric(vertical: 32),
+        child: Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.image_not_supported_outlined,
+                color: Colors.white24, size: 32),
+            SizedBox(height: 8),
+            Text('No demo available yet',
+                style: TextStyle(color: Colors.white38, fontSize: 12)),
           ]),
+        ),
+      )
+          : Image.network(
+        gifUrl!,
+        fit: BoxFit.contain,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 48),
+            child: Center(
+              child: SizedBox(
+                width: 28, height: 28,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+            ),
+          );
+        },
+        errorBuilder: (context, error, stack) => const Padding(
+          padding: EdgeInsets.symmetric(vertical: 32),
+          child: Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.broken_image_outlined,
+                  color: Colors.white24, size: 32),
+              SizedBox(height: 8),
+              Text('Could not load demo',
+                  style: TextStyle(color: Colors.white38, fontSize: 12)),
+            ]),
+          ),
         ),
       ),
     );

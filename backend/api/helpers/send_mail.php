@@ -23,8 +23,8 @@ require_once __DIR__ . '/../../phpmailer/src/SMTP.php';
 
 function sendOtpEmail(string $toEmail, string $toName, string $otp): bool
 {
-    $mailUser = getenv('MAIL_USER') ?: 'vinaybunny2511@gmail.com';   // ← change this
-    $mailPass = getenv('MAIL_PASS') ?: 'qhsqvgxzwqsjrogu';      // ← change this
+    $mailUser = getenv('MAIL_USER') ?: 'myolix.app@gmail.com';   // ← change this
+    $mailPass = getenv('MAIL_PASS') ?: 'vtqljcvbwukmkkxg';      // ← change this
 
     $mail = new PHPMailer(true);
     try {
