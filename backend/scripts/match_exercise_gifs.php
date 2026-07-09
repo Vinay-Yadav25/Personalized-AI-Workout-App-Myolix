@@ -30,7 +30,7 @@
 require_once __DIR__ . '/../config/db.php';
 
 // ⚠️ PASTE YOUR RAPIDAPI KEY HERE
-const RAPIDAPI_KEY = 'YOUR_RAPIDAPI_KEY_HERE';
+const RAPIDAPI_KEY = '72422b34bfmsh9b877134e4bc919p13a6e9jsn2493c3279d9c';
 
 const MIN_CONFIDENCE = 40; // % — below this, we leave gif_url as NULL
 

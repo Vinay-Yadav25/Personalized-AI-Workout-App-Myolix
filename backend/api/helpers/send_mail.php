@@ -38,7 +38,7 @@ function sendOtpEmail(string $toEmail, string $toName, string $otp): bool
         $mail->Port       = 587;
 
         // Sender / recipient
-        $mail->setFrom($mailUser, 'AI Workout');
+        $mail->setFrom($mailUser, 'Myolix');
         $mail->addAddress($toEmail, $toName ?: $toEmail);
 
         // Content
