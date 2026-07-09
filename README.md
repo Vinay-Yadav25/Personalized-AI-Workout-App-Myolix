@@ -1,4 +1,5 @@
-# ai_workout_application
+# Myolix
+
 
 A new Flutter project.
 
